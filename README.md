@@ -1,5 +1,5 @@
 # goquiche
 
-[[https://imgur.com/a/SWF1nyO|alt=quiche]]
+[[https://i.imgur.com/xprQDkC.png|alt=quiche]]
 
 Bake a Go program into a quiche!
