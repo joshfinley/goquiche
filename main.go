@@ -131,7 +131,7 @@ func godeln(n ast.Node) *big.Int {
 	case *ast.Field:
 		return gfield(n.(*ast.Field))
 	default:
-		log.Println("type not implemented")
+		fmt.Println("type not implemented")
 	}
 
 	return nil
@@ -173,7 +173,7 @@ func gfunctype(f *ast.FuncType) *big.Int {
 		}
 	}
 
-	if len(f.Results.List) != 0 {
+	if f.Results != nil {
 		resl := f.Results.List
 
 		for _, res := range resl {
@@ -205,41 +205,40 @@ func gincdecstmt(n *ast.IncDecStmt) *big.Int {
 		log.Println("type not implemented: ")
 		return nil
 	}
-	symVal, symPrime := symt.add(sym)
-	exprVal, exprPrime := symt.add(expr)
-	gn := big.NewInt(0).Exp(symPrime, symVal, nil)
-	gn2 := big.NewInt(0).Exp(exprPrime, exprVal, nil)
-	gn.Mul(gn, gn2)
+	_, _, symGn := symt.add(sym)
+	_, _, exprGn := symt.add(expr)
+	stmt := expr + sym
+	stmtGn := symGn.Mul(symGn, exprGn)
+	var gns = [...]*big.Int{symGn, exprGn}
+	symt.addCompound(stmt, gns[:])
+	return stmtGn
 
-	return gn
 }
 
 func gretstmt(n *ast.ReturnStmt) *big.Int {
 	symRet := "return"
-	symVal, symPrime := symt.add(symRet)
+	_, _, symGn := symt.add(symRet)
 
 	gns := make([]*big.Int, 0)
 	for _, res := range n.Results {
 		gns = append(gns, godeln(res))
 	}
 
-	gn := big.NewInt(0).Exp(symPrime, symVal, nil)
-
 	if len(gns) > 1 {
 		for i := 0; i < len(gns)-1; i++ {
-			gn.Mul(gns[i], gns[i+1])
+			symGn.Mul(gns[i], gns[i+1])
 		}
 	} else if len(gns) == 1 {
-		gn.Mul(gn, gns[0])
+		symGn.Mul(symGn, gns[0])
 	}
 
-	return gn
+	return symGn
 }
 
 func gident(i *ast.Ident) *big.Int {
-	symVal, symPrime := symt.add(i.Name)
-	gn := big.NewInt(0).Exp(symPrime, symVal, nil) // gödel number of ident (should already exist?)
-	return gn
+	symVal, symPrime, symGn := symt.add(i.Name)
+	symGn.Exp(symPrime, symVal, nil) // gödel number of ident (should already exist?)
+	return symGn
 }
 
 // get the gödel number of a GenDecl
@@ -255,8 +254,8 @@ func gdecl(d *ast.GenDecl) *big.Int {
 
 func glit(e *ast.BasicLit) *big.Int {
 	sym := e.Value
-	symVal, symPrime := symt.add(sym)
-	gn := big.NewInt(0).Exp(symPrime, symVal, nil) // gödel number of literal
+	symVal, symPrime, gn := symt.add(sym)
+	gn.Exp(symPrime, symVal, nil) // gödel number of literal
 	return gn
 }
 
@@ -278,10 +277,9 @@ func gbinexpr(e *ast.BinaryExpr) *big.Int {
 	default:
 		log.Panicln("encountered unknown binaryexpr token:", e.Op)
 	}
-	opVal, opPrime := symt.add(opSym)
+	_, _, opGn := symt.add(opSym)
 
 	gns := make([]*big.Int, 0)
-	opGn := big.NewInt(0).Exp(opPrime, opVal, nil)
 	gns = append(gns, opGn)
 	gns = append(gns, godeln(e.X))
 	gns = append(gns, godeln(e.Y))
@@ -300,8 +298,7 @@ func gcallexpr(e *ast.CallExpr) *big.Int {
 		log.Panicln("cannot yet handle anonymous functions")
 	}
 
-	nameVal, namePrime := symt.add(nameSym)
-	gn := big.NewInt(0).Exp(namePrime, nameVal, nil)
+	_, _, gn := symt.add(nameSym)
 	var gns = make([]*big.Int, 0)
 	gns = append(gns, gn)
 
@@ -326,11 +323,10 @@ func gexprstmt(n *ast.ExprStmt) *big.Int {
 	return nil
 }
 
-//  get the gödel number of func declaration
+// get the gödel number of func declaration
 func gfuncdecl(e *ast.FuncDecl) *big.Int {
 	funcSym := "func"
-	funcPrime, funcVal := symt.add(funcSym)
-	gn := big.NewInt(0).Exp(funcPrime, funcVal, nil)
+	_, _, gn := symt.add(funcSym)
 
 	gns := make([]*big.Int, 0)
 	if len(e.Type.Params.List) != 0 {
@@ -351,8 +347,8 @@ func gfuncdecl(e *ast.FuncDecl) *big.Int {
 	if nameSym == "" {
 		log.Panicln("cannot yet handle anonymous functions")
 	}
-	nameVal, namePrime := symt.add(nameSym)
-	gn = gn.Mul(gn, gn.Exp(namePrime, nameVal, nil))
+	_, _, nameGn := symt.add(nameSym)
+	gn.Mul(gn, nameGn)
 
 	for i := 0; i < len(gns)-1; i++ {
 		gn.Mul(gns[i], gns[i+1])
@@ -376,23 +372,20 @@ func gvardec(d *ast.GenDecl) *big.Int {
 		varSym = "var"
 	}
 
-	varVal, varPrime := symt.add(varSym)
+	_, _, varGn := symt.add(varSym)
 
 	// check if the symbol, value, and prime for the variable
 	// name are in the global symbol tables
 	nameSym := d.Specs[0].(*ast.ValueSpec).Names[0].Name
-	nameVal, namePrime := symt.add(nameSym)
+	_, _, nameGn := symt.add(nameSym)
 
 	// check if the symbol, value, and prime for the variable's value
 	// are in the global symbol tables
 	valueSym := d.Specs[0].(*ast.ValueSpec).Values[0].(*ast.BasicLit).Value
-	valueVal, valuePrime := symt.add(valueSym)
+	_, _, valueGn := symt.add(valueSym)
 
-	constGodelN := big.NewInt(0).Exp(varPrime, varVal, nil)     // gödel number of 'const'
-	nameGodelN := big.NewInt(0).Exp(namePrime, nameVal, nil)    // gödel number of constant name
-	valueGodelN := big.NewInt(0).Exp(valuePrime, valueVal, nil) // gödel number of value
-	gn := big.NewInt(0).Mul(constGodelN, nameGodelN)
-	gn.Mul(gn, valueGodelN)
+	gn := big.NewInt(0).Mul(varGn, nameGn)
+	gn.Mul(gn, valueGn)
 
 	return gn
 }
@@ -416,7 +409,7 @@ func (t *symTable) add(sym string) (*big.Int, *big.Int, *big.Int) {
 	if !exists {
 		symVal = nextValueEntry()
 		symPrime = nextPrime()
-		gn := big.NewInt(0).Exp(symPrime, symVal, big.NewInt(0))
+		gn = big.NewInt(0).Exp(symPrime, symVal, big.NewInt(0))
 		t.addSym(sym, symVal)
 		t.addPrime(sym, symPrime)
 		t.addGodeln(sym, gn)
@@ -424,6 +417,37 @@ func (t *symTable) add(sym string) (*big.Int, *big.Int, *big.Int) {
 			sym, symPrime.String(), symVal.String(), gn)
 	}
 	return symVal, symPrime, gn
+}
+
+func (t *symTable) addCompound(sym string, gns []*big.Int) *big.Int {
+	if len(gns) == 1 {
+		return nil
+	}
+
+	symVal, exists := t.ValueTable[sym]
+	symPrime := t.PrimeTable[sym]
+	gn := big.NewInt(0)
+	// add the symbol to the tables if not exist
+	if !exists {
+		symVal = nextValueEntry()
+		symPrime = nextPrime()
+
+		curGn := gns[0]
+		curPrime := nextPrime()
+		nextGn := gns[1]
+		nextPrime := nextPrime()
+
+		newGn1 := big.NewInt(0).Exp(curPrime, curGn, big.NewInt(0))
+		newGn2 := big.NewInt(0).Exp(nextPrime, nextGn, big.NewInt(0))
+		gn := big.NewInt(0).Mul(newGn1, newGn2)
+
+		t.addSym(sym, symVal)
+		t.addPrime(sym, symPrime)
+		t.addGodeln(sym, gn)
+		fmt.Printf("symbol '%s' is %s to the %s is %s...(%d digits ommitted)\n",
+			sym, symPrime.String(), symVal.String(), gn.String()[0:10], len(gn.String())-10)
+	}
+	return gn
 }
 
 func (t *symTable) exists(sym string) bool {
