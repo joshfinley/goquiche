@@ -1,8 +1,4 @@
 // GoQuiche - Bake a go program into a gödel number quiche!
-//
-// Algorithm:
-// 1. Parse a given go source into an AST
-// 2. For each token in a declaration
 package main
 
 import (
@@ -323,7 +319,6 @@ func gexprstmt(n *ast.ExprStmt) *big.Int {
 	return nil
 }
 
-// get the gödel number of func declaration
 func gfuncdecl(e *ast.FuncDecl) *big.Int {
 	funcSym := "func"
 	_, _, gn := symt.add(funcSym)
