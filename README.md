@@ -4,4 +4,4 @@
 <img src="https://i.imgur.com/xprQDkC.png" >
 </p>
 
-Bake a Go program into a quiche! (WIP)
+Bake a Go program into a Gödel number quiche! 
